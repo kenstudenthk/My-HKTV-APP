@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cat/Dog Food Aggregator</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f4f4f4; }
+        .tabs { display: flex; justify-content: center; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; cursor: pointer; background: #ddd; margin: 0 5px; }
+        .tab.active { background: #007bff; color: white; }
+        .filters { display: flex; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; gap: 10px; }
+        .filters input, .filters select { padding: 5px; width: 100px; }
+        .product-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .card { background: white; padding: 10px; border: 1px solid #ccc; cursor: pointer; text-align: center; }
+        .card img { width: 100%; height: auto; max-height: 150px; }
+        .pagination { text-align: center; margin: 20px 0; }
+        .pagination button { padding: 5px 10px; margin: 0 5px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 20px; max-width: 80%; overflow: auto; }
+        @media (max-width: 600px) { .filters { flex-direction: column; align-items: center; } .filters input, .filters select { width: 80%; } }
+    </style>
+</head>
+<body>
+    <h1>Cat/Dog Food Aggregator</h1>
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('cat')">Cat Food</div>
+        <div class="tab" onclick="switchTab('dog')">Dog Food</div>
+    </div>
+    <div class="filters">
+        <input type="number" id="minDiscount" placeholder="Min Discount %" min="0" max="100">
+        <input type="number" id="minPrice" placeholder="Min Price">
+        <input type="number" id="maxPrice" placeholder="Max Price">
+        <input type="text" id="keyword" placeholder="Keyword">
+        <select id="sort">
+            <option value="priceAsc">Price Low to High</option>
+            <option value="discountDesc">Discount High to Low</option>
+            <option value="latest">Latest</option>
+        </select>
+        <button onclick="applyFilters()">Apply</button>
+    </div>
+    <div class="product-list" id="productList"></div>
+    <div class="pagination">
+        <button id="prevBtn" onclick="prevPage()">Prev</button>
+        <span id="pageInfo"></span>
+        <button id="nextBtn" onclick="nextPage()">Next</button>
+    </div>
+    <div class="modal" id="detailModal" onclick="closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2 id="detailName"></h2>
+            <svg id="detailImage" width="200" height="200"><rect width="200" height="200" fill="#ccc"/><text x="50" y="100" font-size="20" fill="#fff">Image</text></svg>
+            <p id="detailDescription"></p>
+            <p>Price: <span id="detailPrice"></span> | Discount Price: <span id="detailDiscountPrice"></span> | Discount: <span id="detailDiscountRate"></span>%</p>
+            <p>Stock: Available (Mock)</p>
+            <a id="detailLink" href="#" target="_blank">Add to Cart on HKTVmall</a>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost:3000'; // Adjust if your server is on a different port/host
+        let currentCategory = 'cat';
+        let currentPage = 0;
+        const pageSize = 20;
+        let filters = { minDiscount: 0, minPrice: null, maxPrice: null, keyword: '', sort: 'priceAsc' };
+        let hasMore = true; // To handle end of pagination
+
+        function switchTab(category) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[onclick="switchTab('${category}')"]`).classList.add('active');
+            currentCategory = category;
+            currentPage = 0;
+            hasMore = true;
+            renderProducts();
+        }
+
+        function applyFilters() {
+            filters.minDiscount = parseInt(document.getElementById('minDiscount').value) || 0;
+            filters.minPrice = parseFloat(document.getElementById('minPrice').value) || null;
+            filters.maxPrice = parseFloat(document.getElementById('maxPrice').value) || null;
+            filters.keyword = document.getElementById('keyword').value;
+            filters.sort = document.getElementById('sort').value;
+            currentPage = 0;
+            hasMore = true;
+            renderProducts();
+        }
+
+        async function renderProducts() {
+            const params = new URLSearchParams({
+                category: currentCategory,
+                page: currentPage,
+                pageSize: pageSize,
+                minDiscount: filters.minDiscount,
+                sort: filters.sort
+            });
+            if (filters.minPrice) params.append('minPrice', filters.minPrice);
+            if (filters.maxPrice) params.append('maxPrice', filters.maxPrice);
+            if (filters.keyword) params.append('keyword', filters.keyword);
+
+            try {
+                const response = await fetch(`${baseUrl}/api/products?${params}`);
+                if (!response.ok) throw new Error('API error');
+                const pageProducts = await response.json();
+
+                const list = document.getElementById('productList');
+                list.innerHTML = '';
+                pageProducts.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <svg width="100" height="100"><rect width="100" height="100" fill="#ccc"/><text x="20" y="50" font-size="12" fill="#fff">Img</text></svg>
+                        <h3>${p.name}</h3>
+                        <p>Price: $${p.price} | Disc: $${p.discountPrice} | ${p.discountRate}% Off</p>
+                        <p>${p.description.substring(0, 50)}...</p>
+                    `;
+                    card.onclick = () => showDetail(p);
+                    list.appendChild(card);
+                });
+
+                hasMore = pageProducts.length === pageSize;
+                document.getElementById('nextBtn').disabled = !hasMore;
+                document.getElementById('prevBtn').disabled = currentPage === 0;
+                document.getElementById('pageInfo').innerText = `Page ${currentPage + 1}`;
+            } catch (error) {
+                console.error(error);
+                document.getElementById('productList').innerHTML = '<p>Error loading products</p>';
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                renderProducts();
+            }
+        }
+
+        function nextPage() {
+            if (hasMore) {
+                currentPage++;
+                renderProducts();
+            }
+        }
+
+        function showDetail(product) {
+            document.getElementById('detailName').innerText = product.name;
+            document.getElementById('detailDescription').innerText = product.description;
+            document.getElementById('detailPrice').innerText = `$${product.price}`;
+            document.getElementById('detailDiscountPrice').innerText = `$${product.discountPrice}`;
+            document.getElementById('detailDiscountRate').innerText = product.discountRate;
+            document.getElementById('detailLink').href = product.link;
+            document.getElementById('detailModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        // Initial render
+        renderProducts();
+    </script>
+</body>
+</html>
