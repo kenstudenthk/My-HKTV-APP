@@ -1,116 +1,267 @@
-const playwright = require('playwright');
-const fs = require('fs');
+const { chromium } = require('playwright');
+const axios = require('axios');
+const db = require('./db');
 
-async function testScrape() {
-  // 啟動瀏覽器 (headless: false 以查看過程；若超時問題持續，可改為 true)
-  const browser = await playwright.chromium.launch({ headless: false });
-  const page = await browser.newPage();
-  
-  // 設置用戶代理以模擬真實瀏覽器
-  await page.setExtraHTTPHeaders({ 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' });
-  
-  const allProducts = [];
-  let pageNo = 0;
-  let hasMore = true;
-  
-  try {
-    while (hasMore) {
-      // 構建當前頁URL (pageNo從0開始)
-      const url = `https://www.hktvmall.com/hktv/zh/search_a/?keyword=%E8%B2%93%E7%B3%A7&bannerCategory=AA22000000000&pageNo=${pageNo}`;
-      console.log(`[測試] 導航到第 ${pageNo + 1} 頁: ${url}`);
-      
-      // 加載頁面並等待內容 (改為 'domcontentloaded' 條件，並增加超時到180000ms)
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180000 });
-      console.log(`[測試] 第 ${pageNo + 1} 頁基本加載成功`);
-      
-      // 額外等待動態內容並多次滾動頁面以觸發載入
-      await page.waitForTimeout(15000); // 等待15秒
-      await page.evaluate(() => window.scrollBy(0, document.body.scrollHeight)); // 滾動到底部
-      await page.waitForTimeout(5000);
-      await page.evaluate(() => window.scrollBy(0, document.body.scrollHeight)); // 再次滾動
-      await page.waitForTimeout(5000);
-      console.log(`[測試] 已等待第 ${pageNo + 1} 頁動態內容載入並滾動頁面`);
-      
-      // 等待產品列表區域出現 (基於您提供的JS Path和XPath)
-      await page.waitForSelector('#search-result-wrapper > div > div.wrapper-content-right', { timeout: 180000 });
-      console.log(`[測試] 檢測到第 ${pageNo + 1} 頁產品列表區域`);
-      
-      // 等待產品卡片出現 (基於您提供的JS Path和XPath)
-      await page.waitForSelector('#algolia-search-result-container > div > div > span', { timeout: 180000 });
-      console.log(`[測試] 檢測到第 ${pageNo + 1} 頁產品卡片`);
-      
-      // 提取數據，使用您提供的結構定位所有產品卡片
-      const currentPageProducts = await page.evaluate(() => {
-        const productList = document.querySelector('#search-result-wrapper > div > div.wrapper-content-right');
-        if (!productList) return [];
-        
-        const productNodes = productList.querySelectorAll('#algolia-search-result-container > div > div > span');
-        const filteredProducts = [];
-        
-        productNodes.forEach(n => {
-          const name = n.querySelector('.brand-product-name')?.innerText.trim() || '未知名稱';
-          const originalPriceText = n.querySelector('.promotional span')?.innerText.trim() || 'N/A';
-          const discountPriceText = n.querySelector('.price .discount')?.innerText.trim() || originalPriceText;
-          const link = n.querySelector('a')?.href || '無連結';
-          const imageUrl = n.querySelector('img')?.src || '無圖片';
-          
-          // 過濾無效項目
-          if (name !== '未知名稱' && originalPriceText !== 'N/A') {
-            const originalPrice = parseFloat(originalPriceText.replace(/[^0-9.]/g, '')) || 0;
-            const discountPrice = parseFloat(discountPriceText.replace(/[^0-9.]/g, '')) || originalPrice;
-            const discountRate = (originalPrice > 0 && discountPrice < originalPrice) ? Math.round((1 - discountPrice / originalPrice) * 100) : 0;
-            
-            filteredProducts.push({
-              name,
-              originalPrice: originalPriceText,
-              discountPrice: discountPriceText,
-              discountRate: `${discountRate}%`,
-              imageUrl,
-              link
-            });
-          }
-        });
-        
-        return filteredProducts;
-      });
-      
-      if (currentPageProducts.length === 0) {
-        console.log(`[測試] 第 ${pageNo + 1} 頁未提取到產品 - 停止抓取`);
-        hasMore = false;
-      } else {
-        allProducts.push(...currentPageProducts);
-        console.log(`[測試] 成功從第 ${pageNo + 1} 頁提取 ${currentPageProducts.length} 個產品`);
-        pageNo++;
-      }
-      
-      // 拍攝當前頁截圖
-      await page.screenshot({ path: `page-${pageNo}-screenshot.png`, fullPage: true });
-      console.log(`[測試] 第 ${pageNo} 頁截圖保存為 page-${pageNo}-screenshot.png`);
-    }
-    
-    // 輸出所有頁的產品
-    if (allProducts.length === 0) {
-      console.log('[測試] 未提取到任何產品。');
-    } else {
-      console.log(`[測試] 成功從所有頁提取 ${allProducts.length} 個產品:`);
-      allProducts.forEach((product, index) => {
-        console.log(`產品 ${index + 1}:`);
-        console.log(`  名稱: ${product.name}`);
-        console.log(`  原價: ${product.originalPrice}`);
-        console.log(`  折扣價: ${product.discountPrice}`);
-        console.log(`  折扣率: ${product.discountRate}`);
-        console.log(`  圖片URL: ${product.imageUrl}`);
-        console.log(`  連結: ${product.link}`);
-        console.log('---');
-      });
-    }
-  } catch (error) {
-    console.error('[測試錯誤] 測試抓取失敗:', error.message);
-    console.log('[提示] 分享輸出以繼續調試。');
-  } finally {
-    await browser.close();
+const CATEGORIES = {
+  dog: {
+    name: 'dog',
+    label: '狗糧',
+    url: 'https://www.hktvmall.com/hktv/zh/%E5%AF%B5%E7%89%A9%E7%94%A8%E5%93%81/%E7%8B%97%E7%8B%97%E5%B0%88%E5%8D%80/%E7%8B%97%E9%A3%9F%E5%93%81/main/search?q=%3Arelevance%3Astreet%3Amain%3Acategory%3AAA83100500000',
+    categoryFilter: 'AA83100500000'
+  },
+  cat: {
+    name: 'cat',
+    label: '貓糧',
+    url: 'https://www.hktvmall.com/hktv/zh/%E5%AF%B5%E7%89%A9%E7%94%A8%E5%93%81/%E8%B2%93%E8%B2%93%E5%B0%88%E5%8D%80/%E8%B2%93%E9%A3%9F%E5%93%81/main/search?q=%3Arelevance%3Astreet%3Amain%3Acategory%3AAA83100000000',
+    categoryFilter: 'AA83100000000'
   }
+};
+
+const HITS_PER_PAGE = 60;
+const REQUEST_DELAY_MS = 1500;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 運行測試 (貓糧)
-testScrape();
+async function extractAlgoliaConfig(categoryUrl) {
+  console.log('[Scraper] Launching browser to extract Algolia config...');
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+
+  await page.setExtraHTTPHeaders({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  });
+
+  let algoliaConfig = null;
+  let algoliaRequestBody = null;
+
+  page.on('request', request => {
+    const url = request.url();
+    if (url.includes('algolia.net') && url.includes('/queries')) {
+      const headers = request.headers();
+      const appId = headers['x-algolia-application-id'];
+      const apiKey = headers['x-algolia-api-key'];
+      if (appId && apiKey) {
+        algoliaConfig = { appId, apiKey, queryUrl: url };
+        try {
+          const rawBody = request.postData();
+          if (rawBody) algoliaRequestBody = JSON.parse(rawBody);
+        } catch (_) {}
+      }
+    }
+  });
+
+  try {
+    await page.goto(categoryUrl, { waitUntil: 'networkidle', timeout: 60000 });
+  } catch (e) {
+    console.log('[Scraper] Page load timeout (normal) — checking if config was captured...');
+  }
+
+  // Wait a bit more for XHR calls to fire if networkidle didn't catch them
+  if (!algoliaConfig) {
+    await sleep(5000);
+  }
+
+  await browser.close();
+
+  if (!algoliaConfig) {
+    throw new Error('Could not extract Algolia config from the page. The site may have changed.');
+  }
+
+  console.log(`[Scraper] Algolia config extracted. AppId: ${algoliaConfig.appId}`);
+  return { algoliaConfig, algoliaRequestBody };
+}
+
+function buildAlgoliaQuery(algoliaRequestBody, pageNo) {
+  if (algoliaRequestBody && algoliaRequestBody.requests && algoliaRequestBody.requests.length > 0) {
+    // Clone the original request body and update the page number
+    const cloned = JSON.parse(JSON.stringify(algoliaRequestBody));
+    cloned.requests.forEach(req => {
+      const params = new URLSearchParams(req.params || '');
+      params.set('page', String(pageNo));
+      params.set('hitsPerPage', String(HITS_PER_PAGE));
+      req.params = params.toString();
+    });
+    return cloned;
+  }
+  // Fallback: should not happen, but just in case
+  return null;
+}
+
+function mapHitToProduct(hit, categoryName) {
+  const originalPrice = hit.price?.HKD?.value ?? hit.originalPrice ?? null;
+  const discountPrice = hit.salePrice?.HKD?.value ?? hit.discountPrice ?? originalPrice;
+  const discountRate = (originalPrice && discountPrice && discountPrice < originalPrice)
+    ? Math.round((1 - discountPrice / originalPrice) * 100)
+    : 0;
+
+  // Build the product URL from objectID or slug
+  const objectID = hit.objectID || hit.code || '';
+  const productUrl = hit.url
+    ? (hit.url.startsWith('http') ? hit.url : `https://www.hktvmall.com${hit.url}`)
+    : `https://www.hktvmall.com/hktv/zh/main/${objectID}/p/${objectID}`;
+
+  // Get image URL
+  const imageUrl = hit.images?.[0]?.url
+    ?? hit.thumbnail
+    ?? hit.image
+    ?? (hit.images && typeof hit.images === 'string' ? hit.images : null)
+    ?? null;
+
+  // Stock status: Algolia sometimes has stock info
+  const inStock = hit.inStock !== undefined
+    ? (hit.inStock ? 1 : 0)
+    : (hit.stockLevel !== undefined ? (hit.stockLevel > 0 ? 1 : 0) : 1);
+
+  return {
+    product_id: objectID,
+    category: categoryName,
+    name: hit.name || hit.title || hit.productName || '(unknown)',
+    brand: hit.brand || hit.brandName || null,
+    original_price: originalPrice,
+    discount_price: discountPrice,
+    discount_rate: discountRate,
+    in_stock: inStock,
+    image_url: imageUrl,
+    product_url: productUrl
+  };
+}
+
+async function scrapeCategory(categoryKey) {
+  const categoryConfig = CATEGORIES[categoryKey];
+  if (!categoryConfig) throw new Error(`Unknown category: ${categoryKey}`);
+
+  const { name: categoryName, label, url: categoryUrl } = categoryConfig;
+
+  console.log(`\n[Scraper] === Starting scrape for ${label} (${categoryName}) ===`);
+
+  // Mark as running
+  await db.updateScrapeProgress(categoryName, {
+    status: 'running',
+    started_at: new Date().toISOString(),
+    completed_at: null
+  });
+
+  // Check for resumable progress
+  const statusRows = await db.getScrapeStatus();
+  const existing = statusRows.find(r => r.category === categoryName);
+  let startPage = 0;
+  if (existing && existing.status === 'running' && existing.last_page_scraped >= 0) {
+    startPage = existing.last_page_scraped + 1;
+    console.log(`[Scraper] Resuming from page ${startPage}`);
+  }
+
+  // Phase 1: Extract Algolia config via Playwright
+  let algoliaConfig, algoliaRequestBody;
+  try {
+    ({ algoliaConfig, algoliaRequestBody } = await extractAlgoliaConfig(categoryUrl));
+  } catch (err) {
+    console.error(`[Scraper] Failed to extract Algolia config: ${err.message}`);
+    await db.updateScrapeProgress(categoryName, { status: 'error' });
+    throw err;
+  }
+
+  if (!algoliaRequestBody) {
+    console.error('[Scraper] No Algolia request body captured. Cannot proceed with HTTP scraping.');
+    await db.updateScrapeProgress(categoryName, { status: 'error' });
+    throw new Error('No Algolia request body captured');
+  }
+
+  // Phase 2: HTTP pagination loop
+  let pageNo = startPage;
+  let totalPages = Infinity;
+  let totalProducts = existing ? (existing.total_products || 0) : 0;
+  let retryCount = 0;
+  const MAX_RETRIES = 4;
+
+  while (pageNo < totalPages) {
+    const queryBody = buildAlgoliaQuery(algoliaRequestBody, pageNo);
+    if (!queryBody) {
+      console.error('[Scraper] Could not build Algolia query body');
+      break;
+    }
+
+    let response;
+    try {
+      response = await axios.post(
+        algoliaConfig.queryUrl,
+        queryBody,
+        {
+          headers: {
+            'X-Algolia-Application-Id': algoliaConfig.appId,
+            'X-Algolia-API-Key': algoliaConfig.apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 30000
+        }
+      );
+      retryCount = 0;
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 429 || status === 503) {
+        const waitMs = Math.min(Math.pow(2, retryCount) * 2000, 60000);
+        console.log(`[Scraper] Rate limited (${status}). Waiting ${waitMs / 1000}s...`);
+        await sleep(waitMs);
+        retryCount++;
+        if (retryCount > MAX_RETRIES) {
+          console.error('[Scraper] Too many retries. Stopping.');
+          break;
+        }
+        continue;
+      }
+      console.error(`[Scraper] Request failed on page ${pageNo}: ${err.message}`);
+      break;
+    }
+
+    const result = response.data?.results?.[0];
+    if (!result) {
+      console.log(`[Scraper] No results on page ${pageNo}. Stopping.`);
+      break;
+    }
+
+    const { hits = [], nbPages = 1, nbHits } = result;
+
+    if (pageNo === startPage) {
+      totalPages = nbPages;
+      console.log(`[Scraper] Total pages: ${totalPages}, Total products: ${nbHits}`);
+      await db.updateScrapeProgress(categoryName, { total_pages: totalPages });
+    }
+
+    if (hits.length === 0) {
+      console.log(`[Scraper] Empty hits on page ${pageNo}. Stopping.`);
+      break;
+    }
+
+    const products = hits.map(hit => mapHitToProduct(hit, categoryName));
+    await db.upsertProducts(products);
+    totalProducts += products.length;
+
+    await db.updateScrapeProgress(categoryName, {
+      last_page_scraped: pageNo,
+      total_products: totalProducts
+    });
+
+    console.log(`[Scraper] Page ${pageNo + 1}/${totalPages} — ${products.length} products saved (total: ${totalProducts})`);
+
+    pageNo++;
+    if (pageNo < totalPages) await sleep(REQUEST_DELAY_MS);
+  }
+
+  await db.updateScrapeProgress(categoryName, {
+    status: 'complete',
+    completed_at: new Date().toISOString(),
+    total_products: totalProducts
+  });
+
+  console.log(`[Scraper] === Finished ${label}: ${totalProducts} products total ===\n`);
+  return totalProducts;
+}
+
+async function scrapeAll() {
+  await scrapeCategory('dog');
+  await scrapeCategory('cat');
+}
+
+module.exports = { scrapeCategory, scrapeAll };

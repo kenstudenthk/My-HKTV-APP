@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node backend/index.js",
+    "dev": "node backend/index.js",
+    "scrape:dog": "node -e \"require('./backend/scraper').scrapeCategory('dog')\"",
+    "scrape:cat": "node -e \"require('./backend/scraper').scrapeCategory('cat')\"",
+    "scrape:all": "node -e \"require('./backend/scraper').scrapeAll()\""
   },
   "keywords": [],
   "author": "",
