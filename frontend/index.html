@@ -1,161 +1,620 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-HK">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cat/Dog Food Aggregator</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f4f4f4; }
-        .tabs { display: flex; justify-content: center; margin-bottom: 20px; }
-        .tab { padding: 10px 20px; cursor: pointer; background: #ddd; margin: 0 5px; }
-        .tab.active { background: #007bff; color: white; }
-        .filters { display: flex; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; gap: 10px; }
-        .filters input, .filters select { padding: 5px; width: 100px; }
-        .product-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-        .card { background: white; padding: 10px; border: 1px solid #ccc; cursor: pointer; text-align: center; }
-        .card img { width: 100%; height: auto; max-height: 150px; }
-        .pagination { text-align: center; margin: 20px 0; }
-        .pagination button { padding: 5px 10px; margin: 0 5px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
-        .modal-content { background: white; padding: 20px; max-width: 80%; overflow: auto; }
-        @media (max-width: 600px) { .filters { flex-direction: column; align-items: center; } .filters input, .filters select { width: 80%; } }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>寵物糧食比較 | Pet Food Catalog</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      color: #222;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #e63946;
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 700; }
+    #statusBar {
+      font-size: 0.78rem;
+      opacity: 0.9;
+      white-space: nowrap;
+    }
+    #scrapeBtn {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.6);
+      color: #fff;
+      padding: 5px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.82rem;
+    }
+    #scrapeBtn:hover { background: rgba(255,255,255,0.35); }
+    #scrapeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 2px solid #e63946;
+      padding: 0 20px;
+    }
+    .tab {
+      padding: 12px 24px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s;
+      color: #555;
+    }
+    .tab.active { border-bottom-color: #e63946; color: #e63946; }
+    .tab:hover:not(.active) { color: #e63946; }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      gap: 16px;
+      padding: 16px 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── Filters sidebar ── */
+    .filters {
+      width: 220px;
+      flex-shrink: 0;
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      align-self: flex-start;
+      position: sticky;
+      top: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .filters h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+      color: #333;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .filter-group { margin-bottom: 16px; }
+    .filter-group label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+    }
+    .filter-group input[type="text"],
+    .filter-group input[type="number"],
+    .filter-group select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .filter-group input[type="range"] { width: 100%; }
+    .range-display { font-size: 0.78rem; color: #777; margin-top: 2px; }
+
+    .filter-group .row { display: flex; gap: 6px; }
+    .filter-group .row input { width: 50%; }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    #applyBtn, #resetBtn {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    #applyBtn { background: #e63946; color: #fff; }
+    #applyBtn:hover { background: #c1121f; }
+    #resetBtn { background: #eee; color: #444; margin-top: 6px; }
+    #resetBtn:hover { background: #ddd; }
+
+    /* ── Main content ── */
+    .main { flex: 1; min-width: 0; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    #resultCount { font-size: 0.85rem; color: #666; }
+    #sortSelect {
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      background: #fff;
+    }
+
+    /* ── Product grid ── */
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      transition: box-shadow 0.15s;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.14); }
+
+    .card-img-wrap {
+      position: relative;
+      background: #f8f8f8;
+      aspect-ratio: 1;
+      overflow: hidden;
+    }
+    .card-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .badge-discount {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      background: #e63946;
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .badge-outofstock {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 0.68rem;
+      padding: 2px 5px;
+      border-radius: 3px;
+    }
+
+    .card-body { padding: 10px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .card-brand { font-size: 0.72rem; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
+    .card-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #222;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-prices { margin-top: auto; padding-top: 6px; }
+    .price-original {
+      font-size: 0.74rem;
+      color: #aaa;
+      text-decoration: line-through;
+    }
+    .price-discount { font-size: 0.95rem; font-weight: 700; color: #e63946; }
+    .price-same { font-size: 0.95rem; font-weight: 700; color: #222; }
+
+    .card-link {
+      display: block;
+      text-align: center;
+      background: #e63946;
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 7px;
+      text-decoration: none;
+      margin-top: 8px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .card-link:hover { background: #c1121f; }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      margin: 24px 0 8px;
+      flex-wrap: wrap;
+    }
+    .pagination button {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.83rem;
+    }
+    .pagination button.active {
+      background: #e63946;
+      color: #fff;
+      border-color: #e63946;
+    }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination button:hover:not(:disabled):not(.active) { background: #f5f5f5; }
+    #paginationInfo { font-size: 0.8rem; color: #666; text-align: center; margin-top: 6px; }
+
+    /* ── Empty / loading ── */
+    .state-msg {
+      text-align: center;
+      padding: 60px 20px;
+      color: #888;
+      font-size: 0.95rem;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 720px) {
+      .layout { flex-direction: column; padding: 10px; }
+      .filters { width: 100%; position: static; }
+      .product-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    }
+  </style>
 </head>
 <body>
-    <h1>Cat/Dog Food Aggregator</h1>
-    <div class="tabs">
-        <div class="tab active" onclick="switchTab('cat')">Cat Food</div>
-        <div class="tab" onclick="switchTab('dog')">Dog Food</div>
+
+<header>
+  <h1>🐾 寵物糧食比較</h1>
+  <span id="statusBar">Loading status...</span>
+  <button id="scrapeBtn" onclick="triggerScrape()">↻ 更新資料</button>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('cat')">🐱 貓糧</div>
+  <div class="tab" onclick="switchTab('dog')">🐶 狗糧</div>
+</div>
+
+<div class="layout">
+  <!-- Filters -->
+  <aside class="filters">
+    <h3>篩選 Filters</h3>
+
+    <div class="filter-group">
+      <label>搜尋關鍵字</label>
+      <input type="text" id="keyword" placeholder="品牌 / 產品名稱">
     </div>
-    <div class="filters">
-        <input type="number" id="minDiscount" placeholder="Min Discount %" min="0" max="100">
-        <input type="number" id="minPrice" placeholder="Min Price">
-        <input type="number" id="maxPrice" placeholder="Max Price">
-        <input type="text" id="keyword" placeholder="Keyword">
-        <select id="sort">
-            <option value="priceAsc">Price Low to High</option>
-            <option value="discountDesc">Discount High to Low</option>
-            <option value="latest">Latest</option>
-        </select>
-        <button onclick="applyFilters()">Apply</button>
+
+    <div class="filter-group">
+      <label>品牌 Brand</label>
+      <select id="brand">
+        <option value="">— 全部 —</option>
+      </select>
     </div>
-    <div class="product-list" id="productList"></div>
-    <div class="pagination">
-        <button id="prevBtn" onclick="prevPage()">Prev</button>
-        <span id="pageInfo"></span>
-        <button id="nextBtn" onclick="nextPage()">Next</button>
+
+    <div class="filter-group">
+      <label>折扣 Discount ≥ <span id="discountVal">0</span>%</label>
+      <input type="range" id="minDiscount" min="0" max="80" step="5" value="0"
+        oninput="document.getElementById('discountVal').textContent=this.value">
     </div>
-    <div class="modal" id="detailModal" onclick="closeModal()">
-        <div class="modal-content" onclick="event.stopPropagation()">
-            <h2 id="detailName"></h2>
-            <svg id="detailImage" width="200" height="200"><rect width="200" height="200" fill="#ccc"/><text x="50" y="100" font-size="20" fill="#fff">Image</text></svg>
-            <p id="detailDescription"></p>
-            <p>Price: <span id="detailPrice"></span> | Discount Price: <span id="detailDiscountPrice"></span> | Discount: <span id="detailDiscountRate"></span>%</p>
-            <p>Stock: Available (Mock)</p>
-            <a id="detailLink" href="#" target="_blank">Add to Cart on HKTVmall</a>
+
+    <div class="filter-group">
+      <label>價格範圍 HK$</label>
+      <div class="row">
+        <input type="number" id="minPrice" placeholder="Min" min="0">
+        <input type="number" id="maxPrice" placeholder="Max" min="0">
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="inStockOnly">
+        只顯示有貨 In-stock only
+      </label>
+    </div>
+
+    <button id="applyBtn" onclick="applyAndLoad()">套用 Apply</button>
+    <button id="resetBtn" onclick="resetFilters()">重置 Reset</button>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="results-header">
+      <span id="resultCount">Loading...</span>
+      <select id="sortSelect" onchange="applyAndLoad()">
+        <option value="priceAsc">Price: Low → High</option>
+        <option value="priceDesc">Price: High → Low</option>
+        <option value="discountDesc">Discount: High → Low</option>
+        <option value="latest">Recently Updated</option>
+        <option value="nameAsc">Name A → Z</option>
+      </select>
+    </div>
+
+    <div class="product-grid" id="productGrid">
+      <div class="state-msg">Loading products...</div>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+    <div id="paginationInfo"></div>
+  </main>
+</div>
+
+<script>
+  const BASE = '';
+  const PAGE_SIZE = 24;
+
+  let state = {
+    category: 'cat',
+    page: 0,
+    total: 0,
+    totalPages: 0
+  };
+
+  // ── Tab switch ──────────────────────────────────────────
+  function switchTab(category) {
+    state.category = category;
+    state.page = 0;
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', (i === 0 ? 'cat' : 'dog') === category);
+    });
+    loadBrands();
+    loadProducts();
+  }
+
+  // ── Filters ─────────────────────────────────────────────
+  function getFilters() {
+    return {
+      category: state.category,
+      page: state.page,
+      pageSize: PAGE_SIZE,
+      keyword: document.getElementById('keyword').value.trim(),
+      brand: document.getElementById('brand').value,
+      minDiscount: document.getElementById('minDiscount').value,
+      minPrice: document.getElementById('minPrice').value || '',
+      maxPrice: document.getElementById('maxPrice').value || '',
+      inStockOnly: document.getElementById('inStockOnly').checked,
+      sort: document.getElementById('sortSelect').value
+    };
+  }
+
+  function applyAndLoad() {
+    state.page = 0;
+    loadProducts();
+  }
+
+  function resetFilters() {
+    document.getElementById('keyword').value = '';
+    document.getElementById('brand').value = '';
+    document.getElementById('minDiscount').value = 0;
+    document.getElementById('discountVal').textContent = '0';
+    document.getElementById('minPrice').value = '';
+    document.getElementById('maxPrice').value = '';
+    document.getElementById('inStockOnly').checked = false;
+    document.getElementById('sortSelect').value = 'priceAsc';
+    state.page = 0;
+    loadProducts();
+  }
+
+  // ── Load brands ──────────────────────────────────────────
+  async function loadBrands() {
+    try {
+      const res = await fetch(`${BASE}/api/products/brands?category=${state.category}`);
+      const brands = await res.json();
+      const sel = document.getElementById('brand');
+      sel.innerHTML = '<option value="">— 全部 —</option>';
+      brands.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = b;
+        sel.appendChild(opt);
+      });
+    } catch (_) {}
+  }
+
+  // ── Load products ────────────────────────────────────────
+  async function loadProducts() {
+    const grid = document.getElementById('productGrid');
+    grid.innerHTML = '<div class="state-msg">Loading...</div>';
+    document.getElementById('resultCount').textContent = '';
+    document.getElementById('pagination').innerHTML = '';
+    document.getElementById('paginationInfo').textContent = '';
+
+    const f = getFilters();
+    const params = new URLSearchParams();
+    Object.entries(f).forEach(([k, v]) => { if (v !== '' && v !== false && v !== null) params.set(k, v); });
+
+    try {
+      const res = await fetch(`${BASE}/api/products?${params}`);
+      if (!res.ok) throw new Error('API error');
+      const data = await res.json();
+
+      state.total = data.total;
+      state.totalPages = data.totalPages;
+
+      renderProducts(data.products, data.total);
+      renderPagination(data.page, data.totalPages, data.total, data.pageSize);
+    } catch (err) {
+      grid.innerHTML = `<div class="state-msg">⚠️ Error loading products. Make sure the server is running.</div>`;
+      console.error(err);
+    }
+  }
+
+  // ── Render product cards ─────────────────────────────────
+  function renderProducts(products, total) {
+    const grid = document.getElementById('productGrid');
+    const start = state.page * PAGE_SIZE + 1;
+    const end = Math.min(start + products.length - 1, total);
+    document.getElementById('resultCount').textContent =
+      total > 0 ? `Showing ${start}–${end} of ${total.toLocaleString()} products` : '0 products found';
+
+    if (products.length === 0) {
+      grid.innerHTML = '<div class="state-msg">No products found. Try adjusting your filters.</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+    products.forEach(p => {
+      const hasDiscount = p.discount_rate > 0;
+      const inStock = p.in_stock === 1;
+
+      const originalPriceHtml = hasDiscount && p.original_price
+        ? `<div class="price-original">HK$ ${Number(p.original_price).toFixed(1)}</div>`
+        : '';
+      const discountPriceHtml = p.discount_price
+        ? `<div class="${hasDiscount ? 'price-discount' : 'price-same'}">HK$ ${Number(p.discount_price).toFixed(1)}</div>`
+        : '<div class="price-same">—</div>';
+
+      const imgSrc = p.image_url || '';
+      const imgHtml = imgSrc
+        ? `<img src="${escHtml(imgSrc)}" alt="${escHtml(p.name)}" loading="lazy" onerror="this.style.display='none'">`
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:2rem;">📦</div>`;
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="card-img-wrap">
+          ${imgHtml}
+          ${hasDiscount ? `<span class="badge-discount">-${p.discount_rate}%</span>` : ''}
+          ${!inStock ? `<span class="badge-outofstock">缺貨</span>` : ''}
         </div>
-    </div>
+        <div class="card-body">
+          <div class="card-brand">${escHtml(p.brand || '')}</div>
+          <div class="card-name">${escHtml(p.name)}</div>
+          <div class="card-prices">
+            ${originalPriceHtml}
+            ${discountPriceHtml}
+          </div>
+          <a class="card-link" href="${escHtml(p.product_url || '#')}" target="_blank" rel="noopener">
+            View on HKTVMall →
+          </a>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
 
-    <script>
-        const baseUrl = 'http://localhost:3000'; // Adjust if your server is on a different port/host
-        let currentCategory = 'cat';
-        let currentPage = 0;
-        const pageSize = 20;
-        let filters = { minDiscount: 0, minPrice: null, maxPrice: null, keyword: '', sort: 'priceAsc' };
-        let hasMore = true; // To handle end of pagination
+  // ── Pagination ───────────────────────────────────────────
+  function renderPagination(page, totalPages, total, pageSize) {
+    const container = document.getElementById('pagination');
+    container.innerHTML = '';
+    if (totalPages <= 1) return;
 
-        function switchTab(category) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelector(`.tab[onclick="switchTab('${category}')"]`).classList.add('active');
-            currentCategory = category;
-            currentPage = 0;
-            hasMore = true;
-            renderProducts();
-        }
+    const addBtn = (label, targetPage, isActive = false, disabled = false) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      if (isActive) btn.classList.add('active');
+      if (disabled) btn.disabled = true;
+      btn.onclick = () => { state.page = targetPage; loadProducts(); window.scrollTo(0, 0); };
+      container.appendChild(btn);
+    };
 
-        function applyFilters() {
-            filters.minDiscount = parseInt(document.getElementById('minDiscount').value) || 0;
-            filters.minPrice = parseFloat(document.getElementById('minPrice').value) || null;
-            filters.maxPrice = parseFloat(document.getElementById('maxPrice').value) || null;
-            filters.keyword = document.getElementById('keyword').value;
-            filters.sort = document.getElementById('sort').value;
-            currentPage = 0;
-            hasMore = true;
-            renderProducts();
-        }
+    addBtn('‹ Prev', page - 1, false, page === 0);
 
-        async function renderProducts() {
-            const params = new URLSearchParams({
-                category: currentCategory,
-                page: currentPage,
-                pageSize: pageSize,
-                minDiscount: filters.minDiscount,
-                sort: filters.sort
-            });
-            if (filters.minPrice) params.append('minPrice', filters.minPrice);
-            if (filters.maxPrice) params.append('maxPrice', filters.maxPrice);
-            if (filters.keyword) params.append('keyword', filters.keyword);
+    // Show window of pages around current
+    let start = Math.max(0, page - 2);
+    let end = Math.min(totalPages - 1, page + 2);
+    if (start > 0) { addBtn('1', 0); if (start > 1) container.insertAdjacentHTML('beforeend', '<span style="padding:0 4px;color:#aaa">…</span>'); }
+    for (let i = start; i <= end; i++) addBtn(i + 1, i, i === page);
+    if (end < totalPages - 1) { container.insertAdjacentHTML('beforeend', '<span style="padding:0 4px;color:#aaa">…</span>'); addBtn(totalPages, totalPages - 1); }
 
-            try {
-                const response = await fetch(`${baseUrl}/api/products?${params}`);
-                if (!response.ok) throw new Error('API error');
-                const pageProducts = await response.json();
+    addBtn('Next ›', page + 1, false, page >= totalPages - 1);
 
-                const list = document.getElementById('productList');
-                list.innerHTML = '';
-                pageProducts.forEach(p => {
-                    const card = document.createElement('div');
-                    card.className = 'card';
-                    card.innerHTML = `
-                        <svg width="100" height="100"><rect width="100" height="100" fill="#ccc"/><text x="20" y="50" font-size="12" fill="#fff">Img</text></svg>
-                        <h3>${p.name}</h3>
-                        <p>Price: $${p.price} | Disc: $${p.discountPrice} | ${p.discountRate}% Off</p>
-                        <p>${p.description.substring(0, 50)}...</p>
-                    `;
-                    card.onclick = () => showDetail(p);
-                    list.appendChild(card);
-                });
+    const from = page * pageSize + 1;
+    const to = Math.min((page + 1) * pageSize, total);
+    document.getElementById('paginationInfo').textContent = `Page ${page + 1} of ${totalPages} (${from}–${to} of ${total.toLocaleString()})`;
+  }
 
-                hasMore = pageProducts.length === pageSize;
-                document.getElementById('nextBtn').disabled = !hasMore;
-                document.getElementById('prevBtn').disabled = currentPage === 0;
-                document.getElementById('pageInfo').innerText = `Page ${currentPage + 1}`;
-            } catch (error) {
-                console.error(error);
-                document.getElementById('productList').innerHTML = '<p>Error loading products</p>';
-            }
-        }
+  // ── Status bar ───────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const res = await fetch(`${BASE}/api/scrape/status`);
+      const data = await res.json();
+      const dog = data.dog || {};
+      const cat = data.cat || {};
+      const dogCount = (dog.productCount || 0).toLocaleString();
+      const catCount = (cat.productCount || 0).toLocaleString();
+      const lastRun = dog.completed_at || cat.completed_at;
+      const lastStr = lastRun ? `Last update: ${new Date(lastRun).toLocaleString('zh-HK')}` : 'Not yet scraped';
+      document.getElementById('statusBar').textContent =
+        `🐶 ${dogCount} | 🐱 ${catCount} | ${lastStr}`;
 
-        function prevPage() {
-            if (currentPage > 0) {
-                currentPage--;
-                renderProducts();
-            }
-        }
+      const btn = document.getElementById('scrapeBtn');
+      if (data.scrapeInProgress) {
+        btn.textContent = '⏳ Scraping...';
+        btn.disabled = true;
+        setTimeout(loadStatus, 5000);
+      } else {
+        btn.textContent = '↻ 更新資料';
+        btn.disabled = false;
+      }
+    } catch (_) {
+      document.getElementById('statusBar').textContent = 'Server not reachable';
+    }
+  }
 
-        function nextPage() {
-            if (hasMore) {
-                currentPage++;
-                renderProducts();
-            }
-        }
+  // ── Trigger scrape ───────────────────────────────────────
+  async function triggerScrape() {
+    const btn = document.getElementById('scrapeBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting...';
+    try {
+      const res = await fetch(`${BASE}/api/scrape/trigger?category=all`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Failed to start scrape');
+        btn.disabled = false;
+        btn.textContent = '↻ 更新資料';
+        return;
+      }
+      setTimeout(loadStatus, 1000);
+    } catch (_) {
+      btn.disabled = false;
+      btn.textContent = '↻ 更新資料';
+    }
+  }
 
-        function showDetail(product) {
-            document.getElementById('detailName').innerText = product.name;
-            document.getElementById('detailDescription').innerText = product.description;
-            document.getElementById('detailPrice').innerText = `$${product.price}`;
-            document.getElementById('detailDiscountPrice').innerText = `$${product.discountPrice}`;
-            document.getElementById('detailDiscountRate').innerText = product.discountRate;
-            document.getElementById('detailLink').href = product.link;
-            document.getElementById('detailModal').style.display = 'flex';
-        }
+  // ── Keyword debounce ──────────────────────────────────────
+  let kwTimer;
+  document.getElementById('keyword').addEventListener('input', () => {
+    clearTimeout(kwTimer);
+    kwTimer = setTimeout(applyAndLoad, 350);
+  });
 
-        function closeModal() {
-            document.getElementById('detailModal').style.display = 'none';
-        }
+  // ── Helpers ──────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 
-        // Initial render
-        renderProducts();
-    </script>
+  // ── Init ─────────────────────────────────────────────────
+  loadStatus();
+  loadBrands();
+  loadProducts();
+</script>
 </body>
 </html>
