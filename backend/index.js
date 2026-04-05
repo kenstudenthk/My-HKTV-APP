@@ -18,7 +18,7 @@ app.use('/api/products', productsRouter);
 app.use('/api/scrape', scrapeRouter);
 
 // Catch-all: serve frontend
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
