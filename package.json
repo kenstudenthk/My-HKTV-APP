@@ -18,7 +18,6 @@
     "express": "^5.1.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
-    "playwright": "^1.54.2",
-    "sqlite3": "^5.1.7"
+"sqlite3": "^5.1.7"
   }
 }
