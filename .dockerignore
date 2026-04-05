@@ -1,0 +1,6 @@
+node_modules/
+.git/
+*.png
+.env
+data/
+backend/products.db
