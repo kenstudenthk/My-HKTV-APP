@@ -40,6 +40,26 @@ function safeFloat(obj, key = 'value') {
   return isNaN(n) ? null : n;
 }
 
+function extractWeightGrams(raw) {
+  const text = ['packingSpec', 'name', 'summary', 'description']
+    .map(key => raw[key] || '')
+    .join(' ');
+
+  const patterns = [
+    { regex: /(\d+(?:\.\d+)?)\s*(?:kg|kgs|公斤|千克)/i, factor: 1000 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:lb|lbs|磅)/i, factor: 453.592 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:oz|安士)/i, factor: 28.3495 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|克)(?!\w)/i, factor: 1 }
+  ];
+
+  for (const { regex, factor } of patterns) {
+    const match = text.match(regex);
+    if (match) return Math.round(parseFloat(match[1]) * factor);
+  }
+
+  return null;
+}
+
 function mapProduct(raw, categoryName) {
   // Extract prices from priceList (BUY = original, DISCOUNT = sale)
   const priceList = raw.priceList || [];
@@ -86,6 +106,7 @@ function mapProduct(raw, categoryName) {
     original_price: originalPrice,
     discount_price: salePrice,
     discount_rate: discountRate,
+    weight_grams: extractWeightGrams(raw),
     in_stock: inStock,
     image_url: imageUrl,
     product_url: productUrl

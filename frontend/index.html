@@ -222,6 +222,7 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
+    .card-weight { font-size: 0.76rem; color: #666; }
     .card-prices { margin-top: auto; padding-top: 6px; }
     .price-original {
       font-size: 0.74rem;
@@ -333,6 +334,17 @@
     </div>
 
     <div class="filter-group">
+      <label>重量 Weight</label>
+      <select id="weightRange">
+        <option value="">— 全部 —</option>
+        <option value="under-1kg">Under 1kg</option>
+        <option value="1kg-3kg">1kg – 3kg</option>
+        <option value="3kg-5kg">3kg – 5kg</option>
+        <option value="over-5kg">Over 5kg</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
       <label class="checkbox-label">
         <input type="checkbox" id="inStockOnly">
         只顯示有貨 In-stock only
@@ -351,6 +363,8 @@
         <option value="priceAsc">Price: Low → High</option>
         <option value="priceDesc">Price: High → Low</option>
         <option value="discountDesc">Discount: High → Low</option>
+        <option value="weightAsc">Weight: Low → High</option>
+        <option value="weightDesc">Weight: High → Low</option>
         <option value="latest">Recently Updated</option>
         <option value="nameAsc">Name A → Z</option>
       </select>
@@ -398,6 +412,7 @@
       minDiscount: document.getElementById('minDiscount').value,
       minPrice: document.getElementById('minPrice').value || '',
       maxPrice: document.getElementById('maxPrice').value || '',
+      weightRange: document.getElementById('weightRange').value,
       inStockOnly: document.getElementById('inStockOnly').checked,
       sort: document.getElementById('sortSelect').value
     };
@@ -415,6 +430,7 @@
     document.getElementById('discountVal').textContent = '0';
     document.getElementById('minPrice').value = '';
     document.getElementById('maxPrice').value = '';
+    document.getElementById('weightRange').value = '';
     document.getElementById('inStockOnly').checked = false;
     document.getElementById('sortSelect').value = 'priceAsc';
     state.page = 0;
@@ -489,6 +505,9 @@
       const discountPriceHtml = p.discount_price
         ? `<div class="${hasDiscount ? 'price-discount' : 'price-same'}">HK$ ${Number(p.discount_price).toFixed(1)}</div>`
         : '<div class="price-same">—</div>';
+      const weightHtml = p.weight_grams
+        ? `<div class="card-weight">⚖️ ${escHtml(formatWeight(p.weight_grams))}</div>`
+        : '';
 
       const imgSrc = p.image_url || '';
       const imgHtml = imgSrc
@@ -506,6 +525,7 @@
         <div class="card-body">
           <div class="card-brand">${escHtml(p.brand || '')}</div>
           <div class="card-name">${escHtml(p.name)}</div>
+          ${weightHtml}
           <div class="card-prices">
             ${originalPriceHtml}
             ${discountPriceHtml}
@@ -609,6 +629,11 @@
   // ── Helpers ──────────────────────────────────────────────
   function escHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function formatWeight(grams) {
+    if (!grams) return '';
+    return grams >= 1000 ? `${Number(grams / 1000).toFixed(2).replace(/\.?0+$/, '')}kg` : `${Math.round(grams)}g`;
   }
 
   // ── Init ─────────────────────────────────────────────────

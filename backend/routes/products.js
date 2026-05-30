@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 
 // GET /api/products
-// Query params: category, page, pageSize, minDiscount, maxDiscount, minPrice, maxPrice, keyword, brand, inStockOnly, sort
+// Query params: category, page, pageSize, minDiscount, maxDiscount, minPrice, maxPrice, keyword, brand, weightRange, inStockOnly, sort
 router.get('/', async (req, res) => {
   try {
     const {
@@ -16,6 +16,7 @@ router.get('/', async (req, res) => {
       maxPrice,
       keyword,
       brand,
+      weightRange,
       inStockOnly,
       sort = 'priceAsc'
     } = req.query;
@@ -34,6 +35,7 @@ router.get('/', async (req, res) => {
       maxPrice,
       keyword,
       brand,
+      weightRange,
       inStockOnly,
       sort
     });

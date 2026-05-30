@@ -28,6 +28,7 @@ function initialize() {
           original_price REAL,
           discount_price REAL,
           discount_rate INTEGER DEFAULT 0,
+          weight_grams REAL,
           in_stock INTEGER DEFAULT 1,
           image_url TEXT,
           product_url TEXT,
@@ -38,6 +39,12 @@ function initialize() {
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_discount_rate ON products(discount_rate)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_discount_price ON products(discount_price)`);
+      database.run(`ALTER TABLE products ADD COLUMN weight_grams REAL`, (err) => {
+        if (err && !String(err.message).includes('duplicate column name')) {
+          console.error('Failed to add weight_grams column:', err.message);
+        }
+      });
+      database.run(`CREATE INDEX IF NOT EXISTS idx_products_weight_grams ON products(weight_grams)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock)`);
 
@@ -63,14 +70,15 @@ function upsertProduct(product) {
   return new Promise((resolve, reject) => {
     const database = getDb();
     database.run(`
-      INSERT INTO products (product_id, category, name, brand, original_price, discount_price, discount_rate, in_stock, image_url, product_url, scraped_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (product_id, category, name, brand, original_price, discount_price, discount_rate, weight_grams, in_stock, image_url, product_url, scraped_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(product_id) DO UPDATE SET
         name = excluded.name,
         brand = excluded.brand,
         original_price = excluded.original_price,
         discount_price = excluded.discount_price,
         discount_rate = excluded.discount_rate,
+        weight_grams = excluded.weight_grams,
         in_stock = excluded.in_stock,
         image_url = excluded.image_url,
         product_url = excluded.product_url,
@@ -83,6 +91,7 @@ function upsertProduct(product) {
       product.original_price || null,
       product.discount_price || null,
       product.discount_rate || 0,
+      product.weight_grams || null,
       product.in_stock !== undefined ? product.in_stock : 1,
       product.image_url || null,
       product.product_url || null,
@@ -107,14 +116,15 @@ function upsertProducts(products) {
       let changed = 0;
       products.forEach(product => {
         database.run(`
-          INSERT INTO products (product_id, category, name, brand, original_price, discount_price, discount_rate, in_stock, image_url, product_url, scraped_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO products (product_id, category, name, brand, original_price, discount_price, discount_rate, weight_grams, in_stock, image_url, product_url, scraped_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(product_id) DO UPDATE SET
             name = excluded.name,
             brand = excluded.brand,
             original_price = excluded.original_price,
             discount_price = excluded.discount_price,
             discount_rate = excluded.discount_rate,
+            weight_grams = excluded.weight_grams,
             in_stock = excluded.in_stock,
             image_url = excluded.image_url,
             product_url = excluded.product_url,
@@ -127,6 +137,7 @@ function upsertProducts(products) {
           product.original_price || null,
           product.discount_price || null,
           product.discount_rate || 0,
+          product.weight_grams || null,
           product.in_stock !== undefined ? product.in_stock : 1,
           product.image_url || null,
           product.product_url || null,
@@ -160,6 +171,7 @@ function getProducts(filters = {}) {
       maxPrice,
       keyword,
       brand,
+      weightRange,
       inStockOnly = false,
       sort = 'priceAsc'
     } = filters;
@@ -174,6 +186,10 @@ function getProducts(filters = {}) {
     if (maxPrice) { where.push('discount_price <= ?'); params.push(Number(maxPrice)); }
     if (keyword) { where.push('(name LIKE ? OR brand LIKE ?)'); params.push(`%${keyword}%`, `%${keyword}%`); }
     if (brand) { where.push('brand = ?'); params.push(brand); }
+    if (weightRange === 'under-1kg') { where.push('weight_grams IS NOT NULL AND weight_grams < 1000'); }
+    if (weightRange === '1kg-3kg') { where.push('weight_grams IS NOT NULL AND weight_grams >= 1000 AND weight_grams <= 3000'); }
+    if (weightRange === '3kg-5kg') { where.push('weight_grams IS NOT NULL AND weight_grams > 3000 AND weight_grams <= 5000'); }
+    if (weightRange === 'over-5kg') { where.push('weight_grams IS NOT NULL AND weight_grams > 5000'); }
     if (inStockOnly === 'true' || inStockOnly === true) { where.push('in_stock = 1'); }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
@@ -182,6 +198,8 @@ function getProducts(filters = {}) {
       priceAsc: 'discount_price ASC',
       priceDesc: 'discount_price DESC',
       discountDesc: 'discount_rate DESC',
+      weightAsc: 'weight_grams IS NULL ASC, weight_grams ASC',
+      weightDesc: 'weight_grams IS NULL ASC, weight_grams DESC',
       latest: 'scraped_at DESC',
       nameAsc: 'name ASC'
     };
