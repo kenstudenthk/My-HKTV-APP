@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_URL="${APP_URL:-http://localhost:3000}"
 SCRAPE_CATEGORY="${SCRAPE_CATEGORY:-all}"
 SKIP_SCRAPE=0
 
@@ -38,8 +37,8 @@ docker compose up -d --build app
 
 echo "Checking app health..."
 for i in {1..30}; do
-  if curl -fsS "$APP_URL/api/scrape/status" >/dev/null; then
-    echo "App is responding at $APP_URL"
+  if docker compose exec -T app node -e "fetch('http://127.0.0.1:3000/api/scrape/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"; then
+    echo "App is responding inside the app container"
     break
   fi
   if [ "$i" -eq 30 ]; then
@@ -52,8 +51,17 @@ done
 
 if [ "$SKIP_SCRAPE" -eq 0 ]; then
   echo "Triggering scrape: $SCRAPE_CATEGORY"
-  curl -fsS -X POST "$APP_URL/api/scrape/trigger?category=$SCRAPE_CATEGORY"
-  echo
+  docker compose exec -T -e SCRAPE_CATEGORY="$SCRAPE_CATEGORY" app node -e "
+    fetch('http://127.0.0.1:3000/api/scrape/trigger?category=' + process.env.SCRAPE_CATEGORY, { method: 'POST' })
+      .then(async r => {
+        console.log(await r.text());
+        process.exit(r.ok || r.status === 409 ? 0 : 1);
+      })
+      .catch(err => {
+        console.error(err.message);
+        process.exit(1);
+      });
+  "
 else
   echo "Skipping scrape."
 fi
