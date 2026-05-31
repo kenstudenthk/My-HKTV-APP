@@ -3,6 +3,7 @@ const path = require('path');
 const cron = require('node-cron');
 const db = require('./db');
 const productsRouter = require('./routes/products');
+const recommendationsRouter = require('./routes/recommendations');
 const { router: scrapeRouter, setScrapeInProgress } = require('./routes/scrape');
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 
 // API routes
 app.use('/api/products', productsRouter);
+app.use('/api', recommendationsRouter);
 app.use('/api/scrape', scrapeRouter);
 
 // Catch-all: serve frontend

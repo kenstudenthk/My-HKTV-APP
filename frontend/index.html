@@ -209,6 +209,25 @@
       padding: 2px 5px;
       border-radius: 3px;
     }
+    .interest-btn {
+      position: absolute;
+      left: 7px;
+      bottom: 7px;
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.92);
+      color: #bbb;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.18);
+      transition: color 0.15s, transform 0.12s;
+      z-index: 2;
+    }
+    .interest-btn:hover { color: #e63946; transform: scale(1.08); }
+    .interest-btn.interested { color: #e63946; }
 
     .card-body { padding: 10px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
     .card-brand { font-size: 0.72rem; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -246,6 +265,51 @@
       transition: background 0.15s;
     }
     .card-link:hover { background: #c1121f; }
+    .rec-reason {
+      font-size: 0.76rem;
+      line-height: 1.35;
+      color: #1d4ed8;
+      background: #e8f0fe;
+      border-radius: 4px;
+      padding: 5px 7px;
+      margin-bottom: 3px;
+    }
+    .rec-note {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      color: #555;
+      font-size: 0.9rem;
+      grid-column: 1 / -1;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+    }
+    .feedback-dialog {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%);
+      width: min(92vw, 420px);
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      padding: 16px;
+      text-align: center;
+      z-index: 20;
+    }
+    .feedback-dialog.hidden { display: none; }
+    .feedback-title { font-weight: 700; margin-bottom: 10px; }
+    .feedback-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .feedback-actions button {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 600;
+      padding: 8px 12px;
+    }
+    .feedback-actions button:hover { background: #f5f5f5; }
 
     /* ── Pagination ── */
     .pagination {
@@ -298,8 +362,9 @@
 </header>
 
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('cat')">🐱 貓糧</div>
-  <div class="tab" onclick="switchTab('dog')">🐶 狗糧</div>
+  <div class="tab active" data-tab="cat" onclick="switchTab('cat')">🐱 貓糧</div>
+  <div class="tab" data-tab="dog" onclick="switchTab('dog')">🐶 狗糧</div>
+  <div class="tab" data-tab="recommendations" onclick="switchTab('recommendations')">⭐ For You</div>
 </div>
 
 <div class="layout">
@@ -379,6 +444,15 @@
   </main>
 </div>
 
+<div id="feedbackDialog" class="feedback-dialog hidden" role="dialog" aria-modal="true">
+  <div class="feedback-title">Are these recommendations helpful?</div>
+  <div class="feedback-actions">
+    <button data-rating="satisfied">👍 Yes</button>
+    <button data-rating="unsatisfied">👎 Not really</button>
+    <button data-rating="skip">Skip</button>
+  </div>
+</div>
+
 <script>
   const BASE = '';
   const PAGE_SIZE = 24;
@@ -389,14 +463,54 @@
     total: 0,
     totalPages: 0
   };
+  let currentProducts = [];
+  let lastRecommendationViewCount = 0;
+
+  function getOrCreateUserId() {
+    let id = localStorage.getItem('rec_user_id');
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : `rec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem('rec_user_id', id);
+    }
+    return id;
+  }
+
+  function loadInterestSet() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('hktv_interests') || '[]'));
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  function saveInterestSet(set) {
+    localStorage.setItem('hktv_interests', JSON.stringify([...set]));
+  }
+
+  const interestState = {
+    userId: getOrCreateUserId(),
+    codes: loadInterestSet()
+  };
 
   // ── Tab switch ──────────────────────────────────────────
   function switchTab(category) {
     state.category = category;
     state.page = 0;
-    document.querySelectorAll('.tab').forEach((t, i) => {
-      t.classList.toggle('active', (i === 0 ? 'cat' : 'dog') === category);
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === category);
     });
+
+    const filters = document.querySelector('.filters');
+    const sortSelect = document.getElementById('sortSelect');
+    if (category === 'recommendations') {
+      filters.style.display = 'none';
+      sortSelect.style.display = 'none';
+      loadRecommendations();
+      return;
+    }
+
+    filters.style.display = '';
+    sortSelect.style.display = '';
     loadBrands();
     loadProducts();
   }
@@ -481,23 +595,53 @@
     }
   }
 
-  // ── Render product cards ─────────────────────────────────
-  function renderProducts(products, total) {
+  async function loadRecommendations() {
     const grid = document.getElementById('productGrid');
+    grid.innerHTML = '<div class="state-msg">Loading recommendations...</div>';
+    document.getElementById('pagination').innerHTML = '';
+    document.getElementById('paginationInfo').textContent = '';
+    document.getElementById('resultCount').textContent = 'Recommendations for you';
+
+    try {
+      const res = await fetch(`${BASE}/api/recommendations?user_id=${encodeURIComponent(interestState.userId)}`);
+      if (!res.ok) throw new Error('API error');
+      const data = await res.json();
+      lastRecommendationViewCount = data.view_count || 0;
+      const note = data.cold_start
+        ? 'Save products with the heart button. The recommendations will become more personal after a few saved interests.'
+        : `Updated ${new Date(data.generated_at).toLocaleString('zh-HK')}`;
+
+      renderProducts(data.items || [], data.items?.length || 0, { recommendations: true, note });
+      if (data.show_feedback_prompt) {
+        setTimeout(() => document.getElementById('feedbackDialog').classList.remove('hidden'), 800);
+      }
+    } catch (err) {
+      grid.innerHTML = '<div class="state-msg">⚠️ Error loading recommendations.</div>';
+      console.error(err);
+    }
+  }
+
+  // ── Render product cards ─────────────────────────────────
+  function renderProducts(products, total, options = {}) {
+    const grid = document.getElementById('productGrid');
+    currentProducts = products;
     const start = state.page * PAGE_SIZE + 1;
     const end = Math.min(start + products.length - 1, total);
     document.getElementById('resultCount').textContent =
-      total > 0 ? `Showing ${start}–${end} of ${total.toLocaleString()} products` : '0 products found';
+      options.recommendations
+        ? `${products.length} recommended products`
+        : (total > 0 ? `Showing ${start}–${end} of ${total.toLocaleString()} products` : '0 products found');
 
     if (products.length === 0) {
       grid.innerHTML = '<div class="state-msg">No products found. Try adjusting your filters.</div>';
       return;
     }
 
-    grid.innerHTML = '';
+    grid.innerHTML = options.note ? `<div class="rec-note">${escHtml(options.note)}</div>` : '';
     products.forEach(p => {
       const hasDiscount = p.discount_rate > 0;
       const inStock = p.in_stock === 1;
+      const isInterested = interestState.codes.has(p.product_id);
 
       const originalPriceHtml = hasDiscount && p.original_price
         ? `<div class="price-original">HK$ ${Number(p.original_price).toFixed(1)}</div>`
@@ -521,8 +665,13 @@
           ${imgHtml}
           ${hasDiscount ? `<span class="badge-discount">-${p.discount_rate}%</span>` : ''}
           ${!inStock ? `<span class="badge-outofstock">缺貨</span>` : ''}
+          <button class="interest-btn ${isInterested ? 'interested' : ''}"
+            data-product-id="${escHtml(p.product_id)}"
+            title="${isInterested ? 'Remove from interests' : 'Save to interests'}"
+            aria-label="${isInterested ? 'Remove from interests' : 'Save to interests'}">♥</button>
         </div>
         <div class="card-body">
+          ${p.reason ? `<div class="rec-reason">${escHtml(p.reason)}</div>` : ''}
           <div class="card-brand">${escHtml(p.brand || '')}</div>
           <div class="card-name">${escHtml(p.name)}</div>
           ${weightHtml}
@@ -537,6 +686,41 @@
       `;
       grid.appendChild(card);
     });
+  }
+
+  function toggleInterest(productId) {
+    const product = currentProducts.find(p => p.product_id === productId);
+    if (!product) return;
+
+    const isAdding = !interestState.codes.has(productId);
+    if (isAdding) interestState.codes.add(productId);
+    else interestState.codes.delete(productId);
+    saveInterestSet(interestState.codes);
+
+    document.querySelectorAll(`.interest-btn[data-product-id="${cssEscape(productId)}"]`).forEach(btn => {
+      btn.classList.toggle('interested', isAdding);
+      const title = isAdding ? 'Remove from interests' : 'Save to interests';
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+    });
+
+    fetch(`${BASE}/api/interests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: interestState.userId,
+        event_type: isAdding ? 'add' : 'remove',
+        product_id: product.product_id,
+        name: product.name,
+        brand: product.brand,
+        category: product.category,
+        weight_grams: product.weight_grams,
+        discount_price: product.discount_price,
+        original_price: product.original_price,
+        discount_rate: product.discount_rate,
+        in_stock: product.in_stock === 1
+      })
+    }).catch(err => console.warn('Interest sync failed:', err));
   }
 
   // ── Pagination ───────────────────────────────────────────
@@ -626,6 +810,29 @@
     kwTimer = setTimeout(applyAndLoad, 350);
   });
 
+  document.getElementById('productGrid').addEventListener('click', (event) => {
+    const btn = event.target.closest('.interest-btn');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleInterest(btn.dataset.productId);
+  });
+
+  document.getElementById('feedbackDialog').addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-rating]');
+    if (!btn) return;
+    document.getElementById('feedbackDialog').classList.add('hidden');
+    fetch(`${BASE}/api/recommendation-feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: interestState.userId,
+        rating: btn.dataset.rating,
+        view_count: lastRecommendationViewCount
+      })
+    }).catch(err => console.warn('Feedback sync failed:', err));
+  });
+
   // ── Helpers ──────────────────────────────────────────────
   function escHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -634,6 +841,11 @@
   function formatWeight(grams) {
     if (!grams) return '';
     return grams >= 1000 ? `${Number(grams / 1000).toFixed(2).replace(/\.?0+$/, '')}kg` : `${Math.round(grams)}g`;
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && CSS.escape) return CSS.escape(value);
+    return String(value).replace(/"/g, '\\"');
   }
 
   // ── Init ─────────────────────────────────────────────────
