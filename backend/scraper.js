@@ -41,7 +41,7 @@ function safeFloat(obj, key = 'value') {
 }
 
 function extractWeightGrams(raw) {
-  const text = ['packingSpec', 'name', 'summary', 'description']
+  const text = ['packingSpec', 'name']
     .map(key => raw[key] || '')
     .join(' ');
 
