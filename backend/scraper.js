@@ -46,14 +46,18 @@ function extractWeightGrams(raw) {
     .join(' ');
 
   const patterns = [
-    { regex: /(\d+(?:\.\d+)?)\s*(?:kg|kgs|公斤|千克)/i, factor: 1000 },
-    { regex: /(\d+(?:\.\d+)?)\s*(?:lb|lbs|磅)/i, factor: 453.592 },
-    { regex: /(\d+(?:\.\d+)?)\s*(?:oz|安士)/i, factor: 28.3495 },
-    { regex: /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|克)(?!\w)/i, factor: 1 }
+    { regex: /(\d+(?:\.\d+)?)\s*(?:kg|kgs|公斤|千克)/gi, factor: 1000 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:lb|lbs|磅)/gi, factor: 453.592 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:oz|安士)/gi, factor: 28.3495 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|克)(?!\w)/gi, factor: 1 }
   ];
 
   for (const { regex, factor } of patterns) {
-    const match = text.match(regex);
+    const matches = [...text.matchAll(regex)];
+    const match = matches.find((match) => {
+      const prefix = text.slice(Math.max(0, match.index - 4), match.index);
+      return !/\d\s*[-–—~至到]\s*$/.test(prefix);
+    });
     if (match) return Math.round(parseFloat(match[1]) * factor);
   }
 
