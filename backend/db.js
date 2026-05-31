@@ -2,6 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'products.db');
+const WEIGHT_PARSER_VERSION = '2';
 
 let db;
 
@@ -47,6 +48,12 @@ function initialize() {
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_weight_grams ON products(weight_grams)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock)`);
+      database.run(`
+        CREATE TABLE IF NOT EXISTS app_metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      `);
 
       database.run(`
         CREATE TABLE IF NOT EXISTS scrape_progress (
@@ -59,8 +66,29 @@ function initialize() {
           status TEXT DEFAULT 'idle'
         )
       `, (err) => {
-        if (err) reject(err);
-        else resolve();
+        if (err) return reject(err);
+
+        database.get(
+          `SELECT value FROM app_metadata WHERE key = ?`,
+          ['weight_parser_version'],
+          (err, row) => {
+            if (err) return reject(err);
+            if (row && row.value === WEIGHT_PARSER_VERSION) return resolve();
+
+            database.run(`UPDATE products SET weight_grams = NULL`, (err) => {
+              if (err) return reject(err);
+              database.run(
+                `INSERT INTO app_metadata (key, value) VALUES (?, ?)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                ['weight_parser_version', WEIGHT_PARSER_VERSION],
+                (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                }
+              );
+            });
+          }
+        );
       });
     });
   });
